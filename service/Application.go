@@ -66,6 +66,7 @@ type ApplicationConfig struct {
 	ObjectName   string
 	ObjectPath   dbus.ObjectPath
 	serviceIndex int
+	LocalName	 string
 
 	WriteFunc	GattWriteCallback
 	ReadFunc  	GattReadCallback
@@ -78,6 +79,7 @@ type Application struct {
 	config        *ApplicationConfig
 	objectManager *ObjectManager
 	services      map[dbus.ObjectPath]*GattService1
+	advertisement *LEAdvertisement1
 }
 
 //GetObjectManager return the object manager interface handler
@@ -105,18 +107,25 @@ func (app *Application) GenerateUUID(uuidVal string) string {
 }
 
 //CreateService create a new GattService1 instance
-func (app *Application) CreateService(props *profile.GattService1Properties) (*GattService1, error) {
+func (app *Application) CreateService(props *profile.GattService1Properties, advertised_optional ...bool) (*GattService1, error) {
 	app.config.serviceIndex++
 	appPath := string(app.Path())
 	if appPath == "/" {
 		appPath = ""
 	}
+
+	service_advertised := false
+	if len(advertised_optional) > 0 {
+		service_advertised = advertised_optional[0]
+	}
+
 	path := appPath + "/service" + strconv.Itoa(app.config.serviceIndex)
 	c := &GattService1Config{
 		app:        app,
 		objectPath: dbus.ObjectPath(path),
 		ID:         app.config.serviceIndex,
 		conn:       app.config.conn,
+		advertised: service_advertised,
 	}
 	s, err := NewGattService1(c, props)
 	return s, err
@@ -300,6 +309,79 @@ func (app *Application) HandleDescriptorWrite(srv_uuid string, char_uuid string,
 	err := app.config.DescWriteFunc(app, srv_uuid, char_uuid, desc_uuid, value)
 	if err != nil {
 		return NewCallbackError(-2, err.Error())
+	}
+
+	return nil
+}
+
+//Register an advertisement
+func (app *Application) StartAdvertising(device_name string) error {
+	if app.advertisement != nil {
+		// Already advertising
+		return nil
+	}
+
+	path := "/org/bluez/advertisement/0"
+
+	device_objpath := dbus.ObjectPath("/org/bluez/" + device_name)
+
+	config := &LEAdvertisement1Config{
+		app: app,
+		conn: app.config.conn,
+		objectPath: dbus.ObjectPath(path),
+		device_path: device_objpath,
+	}
+
+	serv_uuids := make([]string, 0)
+
+	for _, serv := range app.services {
+		if serv.Advertised() {
+			serv_uuids = append(serv_uuids, serv.properties.UUID)
+		}
+	}
+
+	props := &LEAdvertisement1Properties{
+		Type: "peripheral",
+		LocalName: app.config.LocalName,
+		ServiceUUIDs: serv_uuids,
+		Duration: 2,
+		Timeout: 60,
+	}
+
+	var err error = nil
+
+	app.advertisement, err = NewLEAdvertisement1(config, props)
+	if err != nil {
+		return err
+	}
+
+	err = app.advertisement.Expose()
+	if err != nil {
+		return err
+	}
+
+	options := make(map[string]interface{})
+
+	device_obj := app.config.conn.Object("org.bluez", device_objpath)
+	result := device_obj.Call("org.bluez.LEAdvertisingManager1.RegisterAdvertisement", 0, config.objectPath, options)
+	if result.Err != nil {
+		return result.Err
+	}
+
+	return nil
+}
+
+func (app *Application) StopAdvertising() error {
+	if app.advertisement == nil {
+		// Not advertising
+		return nil
+	}
+
+	device_obj := app.config.conn.Object("org.bluez", app.advertisement.config.device_path)
+	result := device_obj.Call("org.bluez.LEAdvertisingManager1.UnregisterAdvertisement", 0, app.advertisement.config.objectPath)
+	app.advertisement = nil
+	if result.Err != nil {
+		return result.Err
 	}
 
 	return nil
