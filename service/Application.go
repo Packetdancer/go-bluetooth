@@ -344,8 +344,6 @@ func (app *Application) StartAdvertising(device_name string) error {
 		Type: "peripheral",
 		LocalName: app.config.LocalName,
 		ServiceUUIDs: serv_uuids,
-		Duration: 2,
-		Timeout: 60,
 	}
 
 	var err error = nil

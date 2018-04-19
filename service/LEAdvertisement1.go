@@ -19,14 +19,14 @@ type LEAdvertisement1Config struct {
 type LEAdvertisement1Properties struct {
 	Type				string
 	ServiceUUIDs		[]string
-	ManufacturerData	map[string][]byte
-	SolicitUUIDs		[]string
-	ServiceData			map[string][]byte
-	Includes			[]string
+	//ManufacturerData	map[string][]byte
+	//SolicitUUIDs		[]string
+	//ServiceData			map[string][]byte
+	//Includes			[]string
 	LocalName			string
-	Appearance			uint16
-	Duration			uint16
-	Timeout				uint16
+	//Appearance			uint16
+	//Duration			uint16
+	//Timeout				uint16
 }
 
 func (p *LEAdvertisement1Properties) ToMap() (map[string]interface{}, error) {
